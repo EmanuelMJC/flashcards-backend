@@ -7,7 +7,7 @@ router.use(authMiddleware);
 
 router.get('/:id', cardsController.getCardById);
 
-router.put('/:id', cardsController.updateCard);
+router.put('/:id', cardsController.updateCard); 
 
 router.delete('/:id', cardsController.deleteCard);
 
