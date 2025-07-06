@@ -49,20 +49,20 @@ const authController = {
     }
 
     try {
-      const user = await new Promise((resolve, reject) => {
-        db.get('SELECT * FROM users WHERE email = ?', [email], (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        });
-      });
-
+      console.log('Tentando login com:', email, password);
+      console.log('Usuário retornado do banco:', user);
       if (!user) {
+        console.log('Nenhum usuário encontrado com esse e-mail.');
         return res.status(401).json({ message: 'Credenciais inválidas.' });
       }
 
       const isPasswordValid = await bcrypt.compare(password, user.password);
 
+      console.log('Senha válida?', isPasswordValid);
+
       if (!isPasswordValid) {
+        console.log('Senha incorreta.');
+
         return res.status(401).json({ message: 'Credenciais inválidas.' });
       }
 
@@ -76,6 +76,8 @@ const authController = {
         { expiresIn: '2h' }
       );
 
+      console.log('Login bem-sucedido. Token gerado.');
+
       res.json({
         message: 'Login realizado com sucesso!',
         token,
@@ -86,6 +88,7 @@ const authController = {
         }
       });
     } catch (error) {
+      console.error('Erro no login:', error);
       res.status(500).json({ message: 'Erro ao fazer login.', error: error.message });
     }
   }
