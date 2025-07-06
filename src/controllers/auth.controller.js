@@ -50,16 +50,7 @@ const authController = {
 
     try {
       console.log('Tentando login com:', email, password);
-
-      const user = await new Promise((resolve, reject) => {
-        db.get('SELECT * FROM users WHERE email = ?', [email], (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        });
-      });
-
       console.log('Usuário retornado do banco:', user);
-
       if (!user) {
         console.log('Nenhum usuário encontrado com esse e-mail.');
         return res.status(401).json({ message: 'Credenciais inválidas.' });
@@ -71,6 +62,7 @@ const authController = {
 
       if (!isPasswordValid) {
         console.log('Senha incorreta.');
+
         return res.status(401).json({ message: 'Credenciais inválidas.' });
       }
 

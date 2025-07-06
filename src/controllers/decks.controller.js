@@ -46,6 +46,7 @@ const decksController = {
       
       if (!row) {
         return res.status(404).json({ error: 'Deck não encontrado ou não autorizado.' });
+
       }
       
       res.json(row);
@@ -306,6 +307,18 @@ const decksController = {
           return res.status(500).json({ error: err.message });
         }
         res.json({ message: 'Progresso de todos os cards do deck resetado com sucesso!' });
+      });
+    });
+  }
+};
+
+module.exports = decksController;
+=======
+        res.json({
+          deck: deck,
+          cards: cards,
+          total_cards: cards.length
+        });
       });
     });
   }

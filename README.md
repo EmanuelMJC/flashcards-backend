@@ -150,10 +150,12 @@ Retorna cards prontos para revisão baseado na repetição espaçada.
 - Cards `hard`: revisão após 1 dia
 
 #### GET /decks/:deckId/cards
+
 Lista todos os cards de um deck específico, incluindo suas tags associadas.
 
 #### POST /decks/:deckId/cards
 Cria um novo card em um deck. Pode incluir tags (nomes das tags). Se a tag não existir, ela será criada e associada.
+
 
 **Body:**
 ```json
@@ -165,6 +167,7 @@ Cria um novo card em um deck. Pode incluir tags (nomes das tags). Se a tag não 
 ```
 
 ### Cards (Flashcards)
+
 
 #### GET /cards/:id
 Obtém um card específico por ID, incluindo suas tags associadas.

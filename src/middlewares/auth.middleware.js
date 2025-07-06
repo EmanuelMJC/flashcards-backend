@@ -1,5 +1,6 @@
 require('dotenv').config();
 console.log('JWT_SECRET no middleware:', process.env.JWT_SECRET);
+
 const jwt = require('jsonwebtoken');
 
 const authMiddleware = (req, res, next) => {

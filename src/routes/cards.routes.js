@@ -5,6 +5,7 @@ const authMiddleware = require('../middlewares/auth.middleware');
 
 router.use(authMiddleware);
 
+
 router.post('/', cardsController.createCard);
 
 router.get('/:id', cardsController.getCardById);
@@ -16,4 +17,3 @@ router.delete('/:id', cardsController.deleteCard);
 router.post('/:id/difficulty', cardsController.markCardDifficulty);
 
 module.exports = router;
-

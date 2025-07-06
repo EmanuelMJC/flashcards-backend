@@ -115,7 +115,6 @@ const cardsController = {
   getCardById: (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
-
     const query = `
       SELECT c.*,
              GROUP_CONCAT(t.name) AS tags_names,
