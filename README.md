@@ -1,3 +1,8 @@
+Emanuel Marinho De Jesus Chagas - SP3126617 - EmanuelMJC
+Fabricio Guerra da Silva - SP313671X - Guerrafa
+Gabriel Scopono de Souza - SP3123529 - Scopono
+Nicollas Smid de Oliveira - SP3126412 - Smid1
+
 # Decoreba API
 
 API do aplicativo Decoreba - Sistema de flashcards com repetição espaçada.
