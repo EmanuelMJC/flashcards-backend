@@ -7,7 +7,11 @@ const decksController = {
     const query = `
       SELECT d.*, 
              COUNT(c.id) AS total_cards,
-             SUM(CASE WHEN c.difficulty = 'new' OR c.next_review IS NULL OR c.next_review <= ? THEN 1 ELSE 0 END) AS cards_for_review
+             -- CORREÇÃO AQUI: Use COUNT para contar apenas os cartões que de fato existem e se encaixam na condição
+             COUNT(CASE 
+                     WHEN c.id IS NOT NULL AND (c.difficulty = 'new' OR c.next_review IS NULL OR c.next_review <= ?) THEN 1 
+                     ELSE NULL 
+                   END) AS cards_for_review
       FROM decks d
       LEFT JOIN cards c ON d.id = c.deck_id
       WHERE d.user_id = ?
@@ -31,7 +35,11 @@ const decksController = {
     const query = `
       SELECT d.*, 
              COUNT(c.id) AS total_cards,
-             SUM(CASE WHEN c.difficulty = 'new' OR c.next_review IS NULL OR c.next_review <= ? THEN 1 ELSE 0 END) AS cards_for_review
+             -- CORREÇÃO AQUI: Use COUNT para contar apenas os cartões que de fato existem e se encaixam na condição
+             COUNT(CASE 
+                     WHEN c.id IS NOT NULL AND (c.difficulty = 'new' OR c.next_review IS NULL OR c.next_review <= ?) THEN 1 
+                     ELSE NULL 
+                   END) AS cards_for_review
       FROM decks d
       LEFT JOIN cards c ON d.id = c.deck_id
       WHERE d.id = ? AND d.user_id = ?
