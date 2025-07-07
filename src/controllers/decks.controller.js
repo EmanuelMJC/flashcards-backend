@@ -7,7 +7,6 @@ const decksController = {
     const query = `
       SELECT d.*, 
              COUNT(c.id) AS total_cards,
-             -- CORREÇÃO AQUI: Use COUNT para contar apenas os cartões que de fato existem e se encaixam na condição
              COUNT(CASE 
                      WHEN c.id IS NOT NULL AND (c.difficulty = 'new' OR c.next_review IS NULL OR c.next_review <= ?) THEN 1 
                      ELSE NULL 
@@ -35,7 +34,6 @@ const decksController = {
     const query = `
       SELECT d.*, 
              COUNT(c.id) AS total_cards,
-             -- CORREÇÃO AQUI: Use COUNT para contar apenas os cartões que de fato existem e se encaixam na condição
              COUNT(CASE 
                      WHEN c.id IS NOT NULL AND (c.difficulty = 'new' OR c.next_review IS NULL OR c.next_review <= ?) THEN 1 
                      ELSE NULL 
@@ -139,7 +137,7 @@ const decksController = {
     });
   },
 
-  getStudyCards: (req, res) => {
+  getStudyCards: (req, res) => { 
     const { deckId } = req.params;
     const userId = req.user.id;
     const now = new Date().toISOString();
@@ -169,7 +167,7 @@ const decksController = {
         ORDER BY  
           CASE c.difficulty  
             WHEN 'new' THEN 1  
-            WHEN 'again' THEN 2 -- Adicionado 'again' aqui
+            WHEN 'again' THEN 2 
             WHEN 'hard' THEN 3  
             WHEN 'medium' THEN 4  
             WHEN 'easy' THEN 5  
@@ -197,73 +195,6 @@ const decksController = {
         });
       });
     });
-  },
-
-  getStudyCardsByTag: async (req, res) => {
-    const { tagId } = req.params;
-    const userId = req.user.id;
-    const now = new Date().toISOString();
-
-    try {
-      const tag = await new Promise((resolve, reject) => {
-        db.get('SELECT id, name FROM tags WHERE id = ? AND user_id = ?', [tagId, userId], (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        });
-      });
-
-      if (!tag) {
-        return res.status(404).json({ error: 'Tag não encontrada ou não autorizada.' });
-      }
-
-      const query = `
-        SELECT c.*,
-               GROUP_CONCAT(t.name) AS tags_names,
-               GROUP_CONCAT(t.id) AS tags_ids
-        FROM cards c
-        INNER JOIN card_tags ct ON c.id = ct.card_id
-        LEFT JOIN decks d ON c.deck_id = d.id -- Precisa juntar com decks para verificar user_id
-        LEFT JOIN tags t ON ct.tag_id = t.id -- Para pegar todas as tags do card
-        WHERE ct.tag_id = ? AND d.user_id = ? AND (
-          c.difficulty = 'new' OR
-          c.next_review IS NULL OR
-          c.next_review <= ?
-        )
-        GROUP BY c.id
-        ORDER BY
-          CASE c.difficulty
-            WHEN 'new' THEN 1
-            WHEN 'again' THEN 2
-            WHEN 'hard' THEN 3
-            WHEN 'medium' THEN 4
-            WHEN 'easy' THEN 5
-          END,
-          c.next_review ASC
-      `;
-
-      db.all(query, [tagId, userId, now], (err, cards) => {
-        if (err) {
-          return res.status(500).json({ error: err.message });
-        }
-
-        const cardsWithTags = cards.map(card => ({
-          ...card,
-          tags: card.tags_ids ? card.tags_ids.split(',').map((id, index) => ({
-            id: parseInt(id),
-            name: card.tags_names.split(',')[index]
-          })) : []
-        }));
-
-        res.json({
-          tag: tag, 
-          cards: cardsWithTags,
-          total_cards: cardsWithTags.length
-        });
-      });
-
-    } catch (error) {
-      res.status(500).json({ message: 'Erro ao obter cards para estudo por tag.', error: error.message });
-    }
   },
 
   resetCardProgress: (req, res) => {
@@ -314,7 +245,7 @@ const decksController = {
         res.json({ message: 'Progresso de todos os cards do deck resetado com sucesso!' });
       });
     });
-  }
+  },
 };
 
 module.exports = decksController;

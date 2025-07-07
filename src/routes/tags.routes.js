@@ -1,16 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const tagsController = require('../controllers/tags.controller');
-const authMiddleware = require('../middlewares/auth.middleware');
 
-router.use(authMiddleware);
+router.get('/', tagsController.getAllTags);
+router.post('/', tagsController.createTag);
+router.delete('/:id', tagsController.deleteTag);
 
-router.get('/', tagsController.getAllTags); 
-router.post('/', tagsController.createTag); 
-router.delete('/:id', tagsController.deleteTag); 
+router.get('/cards/:cardId/tags', tagsController.getTagsByCard); 
+router.post('/cards/:cardId/tags', tagsController.addTagToCard); 
+router.delete('/cards/:cardId/tags/:tagId', tagsController.removeTagFromCard); 
 
-router.get('/card/:cardId', tagsController.getTagsByCard); 
-router.post('/card/:cardId', tagsController.addTagToCard); 
-router.delete('/card/:cardId/:tagId', tagsController.removeTagFromCard); 
+
+router.get('/:tagId/study', tagsController.getStudyCardsByTag); 
 
 module.exports = router;

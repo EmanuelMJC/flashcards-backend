@@ -1,7 +1,6 @@
 const db = require('../database/db');
 
 const tagsController = {
-  // Obter todas as tags de um usuário
   getAllTags: (req, res) => {
     const userId = req.user.id;
     db.all('SELECT * FROM tags WHERE user_id = ? ORDER BY name ASC', [userId], (err, rows) => {
@@ -12,7 +11,6 @@ const tagsController = {
     });
   },
 
-  // Criar uma nova tag para o usuário
   createTag: async (req, res) => {
     const { name } = req.body;
     const userId = req.user.id;
@@ -22,7 +20,6 @@ const tagsController = {
     }
 
     try {
-      // Verifica se a tag já existe para este usuário
       const existingTag = await new Promise((resolve, reject) => {
         db.get('SELECT * FROM tags WHERE user_id = ? AND name = ?', [userId, name.trim()], (err, row) => {
           if (err) reject(err);
@@ -47,7 +44,6 @@ const tagsController = {
     }
   },
 
-  // Deletar uma tag 
   deleteTag: (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
@@ -63,12 +59,10 @@ const tagsController = {
     });
   },
 
-  // Obter tags de um card específico
   getTagsByCard: (req, res) => {
     const { cardId } = req.params;
     const userId = req.user.id;
 
-    // Verificar se o card pertence ao usuário
     const checkCardQuery = `
       SELECT c.id FROM cards c
       JOIN decks d ON c.deck_id = d.id
@@ -83,7 +77,6 @@ const tagsController = {
         return res.status(404).json({ error: 'Card não encontrado ou não autorizado.' });
       }
 
-      // Se o card for válido, buscar as tags associadas
       const query = `
         SELECT t.id, t.name
         FROM tags t
@@ -99,7 +92,6 @@ const tagsController = {
     });
   },
 
-  // Associar uma tag a um card
   addTagToCard: async (req, res) => {
     const { cardId } = req.params;
     const { tagId } = req.body; 
@@ -174,6 +166,99 @@ const tagsController = {
         }
         res.json({ message: 'Tag removida do card com sucesso.' });
       });
+    });
+  },
+
+  getStudyCardsByTag: async (req, res) => {
+    const { tagId } = req.params;
+    const userId = req.user.id;
+    const now = new Date().toISOString();
+
+    console.log(`[Backend] getStudyCardsByTag - tagId: ${tagId}, userId: ${userId}`);
+
+    try {
+      const tag = await new Promise((resolve, reject) => {
+        db.get('SELECT id, name FROM tags WHERE id = ? AND user_id = ?', [tagId, userId], (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        });
+      });
+
+      if (!tag) {
+      console.log(`[Backend] Tag ${tagId} não encontrada ou não autorizada para o usuário ${userId}.`); 
+      return res.status(404).json({ error: 'Tag não encontrada ou não autorizada.' });
+    }
+
+      const query = `
+        SELECT c.*,
+               GROUP_CONCAT(t.name) AS tags_names,
+               GROUP_CONCAT(t.id) AS tags_ids
+        FROM cards c
+        INNER JOIN card_tags ct ON c.id = ct.card_id
+        LEFT JOIN decks d ON c.deck_id = d.id -- Precisa juntar com decks para verificar user_id
+        LEFT JOIN tags t ON ct.tag_id = t.id -- Para pegar todas as tags do card
+        WHERE ct.tag_id = ? AND d.user_id = ? AND (
+          c.difficulty = 'new' OR
+          c.next_review IS NULL OR
+          c.next_review <= ?
+        )
+        GROUP BY c.id
+        ORDER BY
+          CASE c.difficulty
+            WHEN 'new' THEN 1
+            WHEN 'again' THEN 2
+            WHEN 'hard' THEN 3
+            WHEN 'medium' THEN 4
+            WHEN 'easy' THEN 5
+          END,
+          c.next_review ASC
+      `;
+
+      db.all(query, [tagId, userId, now], (err, cards) => {
+        if (err) {
+          console.error(`[Backend] Erro ao buscar cartões para a tag ${tagId}:`, err); 
+          return res.status(500).json({ error: err.message });
+        }
+        console.log(`[Backend] Encontrado ${cards.length} cartões para a tag ${tagId}.`);
+
+        const cardsWithTags = cards.map(card => ({
+          ...card,
+          tags: card.tags_ids ? card.tags_ids.split(',').map((id, index) => ({
+            id: parseInt(id),
+            name: card.tags_names.split(',')[index]
+          })) : []
+        }));
+
+        res.json({
+          tag: tag, 
+          cards: cardsWithTags,
+          total_cards: cardsWithTags.length
+        });
+      });
+
+    } catch (error) {
+      console.error('Erro ao obter cards para estudo por tag no backend:', error);
+      res.status(500).json({ message: 'Erro ao obter cards para estudo por tag.', error: error.message });
+    }
+  },
+
+  getAllTags: (req, res) => {
+    const userId = req.user.id;
+    const query = `
+      SELECT DISTINCT t.id, t.name
+      FROM tags t
+      INNER JOIN card_tags ct ON t.id = ct.tag_id
+      INNER JOIN cards c ON ct.card_id = c.id
+      INNER JOIN decks d ON c.deck_id = d.id
+      WHERE d.user_id = ?
+      ORDER BY t.name ASC;
+    `;
+
+    db.all(query, [userId], (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json(rows);
     });
   }
 };
