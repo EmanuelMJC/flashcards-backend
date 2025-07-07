@@ -313,15 +313,3 @@ const decksController = {
 };
 
 module.exports = decksController;
-=======
-        res.json({
-          deck: deck,
-          cards: cards,
-          total_cards: cards.length
-        });
-      });
-    });
-  }
-};
-
-module.exports = decksController;
