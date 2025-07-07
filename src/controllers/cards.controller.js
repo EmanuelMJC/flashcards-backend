@@ -22,6 +22,7 @@ const cardsController = {
       LEFT JOIN tags t ON ct.tag_id = t.id
       WHERE c.deck_id = ? AND d.user_id = ?
       GROUP BY c.id
+      ORDER BY c.id ASC -- Garante uma ordem consistente
     `;
       
     db.get('SELECT * FROM decks WHERE id = ? AND user_id = ?', [deckId, userId], (err, deck) => {
@@ -261,6 +262,35 @@ const cardsController = {
     });
   },
 
+  deleteCard: (req, res) => {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    const checkQuery = `
+      SELECT c.* FROM cards c
+      INNER JOIN decks d ON c.deck_id = d.id
+      WHERE c.id = ? AND d.user_id = ?
+    `;
+    
+    db.get(checkQuery, [id, userId], (err, card) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      
+      if (!card) {
+        return res.status(404).json({ error: 'Card não encontrado ou não autorizado.' });
+      }
+      
+      db.run('DELETE FROM cards WHERE id = ?', [id], function(err) {
+        if (err) {
+          return res.status(500).json({ error: err.message });
+        }
+        
+        res.json({ message: 'Card deletado com sucesso!' });
+      });
+    });
+  },
+
   markCardDifficulty: (req, res) => {
     const { id } = req.params;
     const { rating } = req.body; 
@@ -300,16 +330,20 @@ const cardsController = {
           break;
         case 3: 
           newDifficulty = 'medium';
-          nextReview = addTime(now, 3); 
+          nextReview = addTime(now, 3);
           break;
         case 4: 
           newDifficulty = 'easy';
           nextReview = addTime(now, 7); 
           break;
         case 5: 
-          newDifficulty = 'easy';
-          nextReview = addTime(now, 14); 
+          newDifficulty = 'perfect'; 
+          nextReview = addTime(now, 14);
           break;
+        default: 
+            newDifficulty = 'new';
+            nextReview = null;
+            break;
       }
       
       const updateQuery = `
