@@ -1,10 +1,29 @@
 const db = require('../database/db');
 
+const addTime = (date, days = 0, hours = 0) => {
+  const newDate = new Date(date.getTime());
+  newDate.setDate(newDate.getDate() + days);
+  newDate.setHours(newDate.getHours() + hours);
+  return newDate;
+};
+
 const cardsController = {
   getCardsByDeck: (req, res) => {
     const { deckId } = req.params;
     const userId = req.user.id;
     
+    const query = `
+      SELECT c.*, 
+             GROUP_CONCAT(t.name) AS tags_names,
+             GROUP_CONCAT(t.id) AS tags_ids
+      FROM cards c
+      INNER JOIN decks d ON c.deck_id = d.id
+      LEFT JOIN card_tags ct ON c.id = ct.card_id
+      LEFT JOIN tags t ON ct.tag_id = t.id
+      WHERE c.deck_id = ? AND d.user_id = ?
+      GROUP BY c.id
+    `;
+      
     db.get('SELECT * FROM decks WHERE id = ? AND user_id = ?', [deckId, userId], (err, deck) => {
       if (err) {
         return res.status(500).json({ error: err.message });
@@ -14,18 +33,27 @@ const cardsController = {
         return res.status(404).json({ error: 'Deck não encontrado ou não autorizado.' });
       }
       
-      db.all('SELECT * FROM cards WHERE deck_id = ?', [deckId], (err, rows) => {
+      db.all(query, [deckId, userId], (err, rows) => { 
         if (err) {
           return res.status(500).json({ error: err.message });
         }
-        res.json(rows);
+
+        const cardsWithTags = rows.map(card => ({
+          ...card,
+          tags: card.tags_ids ? card.tags_ids.split(',').map((id, index) => ({
+            id: parseInt(id),
+            name: card.tags_names.split(',')[index]
+          })) : []
+        }));
+        res.json(cardsWithTags);
       });
     });
   },
 
   createCard: (req, res) => {
     const { deckId } = req.params;
-    const { front, back } = req.body;
+    const { front, back, tags } = req.body; 
+
     const userId = req.user.id;
     
     if (!front || !back) {
@@ -50,13 +78,65 @@ const cardsController = {
           return res.status(500).json({ error: err.message });
         }
         
-        res.status(201).json({
-          id: this.lastID,
-          deck_id: deckId,
-          front,
-          back,
-          difficulty: 'new'
-        });
+        const cardId = this.lastID;
+
+        if (tags && Array.isArray(tags) && tags.length > 0) {
+            const tagPromises = tags.map(tagName => {
+                return new Promise((resolve, reject) => {
+                    db.get('SELECT id FROM tags WHERE user_id = ? AND name = ?', [userId, tagName], (err, tagRow) => {
+                        if (err) return reject(err);
+
+                        if (tagRow) { 
+                            db.run('INSERT OR IGNORE INTO card_tags (card_id, tag_id) VALUES (?, ?)', [cardId, tagRow.id], (err) => {
+                                if (err) reject(err);
+                                else resolve();
+                            });
+                        } else { 
+                            db.run('INSERT INTO tags (user_id, name) VALUES (?, ?)', [userId, tagName], function(err) {
+                                if (err) return reject(err);
+                                const newTagId = this.lastID;
+                                db.run('INSERT OR IGNORE INTO card_tags (card_id, tag_id) VALUES (?, ?)', [cardId, newTagId], (err) => {
+                                    if (err) reject(err);
+                                    else resolve();
+                                });
+                            });
+                        }
+                    });
+                });
+            });
+
+            Promise.all(tagPromises)
+                .then(() => {
+                    res.status(201).json({
+                        id: cardId,
+                        deck_id: deckId,
+                        front,
+                        back,
+                        difficulty: 'new',
+                        tags: tags 
+                    });
+                })
+                .catch(tagErr => {
+                    console.error('Erro ao associar tags ao card:', tagErr.message);
+                    res.status(201).json({
+                        id: cardId,
+                        deck_id: deckId,
+                        front,
+                        back,
+                        difficulty: 'new',
+                        message: 'Card criado, mas houve um erro ao associar algumas tags.'
+                    });
+                });
+        } else {
+            res.status(201).json({
+                id: cardId,
+                deck_id: deckId,
+                front,
+                back,
+                difficulty: 'new',
+                tags: []
+            });
+        }
       });
     });
   },
@@ -66,9 +146,15 @@ const cardsController = {
     const userId = req.user.id;
     
     const query = `
-      SELECT c.* FROM cards c
+      SELECT c.*,
+             GROUP_CONCAT(t.name) AS tags_names,
+             GROUP_CONCAT(t.id) AS tags_ids
+      FROM cards c
       INNER JOIN decks d ON c.deck_id = d.id
+      LEFT JOIN card_tags ct ON c.id = ct.card_id
+      LEFT JOIN tags t ON ct.tag_id = t.id
       WHERE c.id = ? AND d.user_id = ?
+      GROUP BY c.id
     `;
     
     db.get(query, [id, userId], (err, row) => {
@@ -80,13 +166,23 @@ const cardsController = {
         return res.status(404).json({ error: 'Card não encontrado ou não autorizado.' });
       }
       
-      res.json(row);
+      const cardWithTags = {
+        ...row,
+        tags: row.tags_ids ? row.tags_ids.split(',').map((tagId, index) => ({
+          id: parseInt(tagId),
+          name: row.tags_names.split(',')[index]
+        })) : []
+      };
+      delete cardWithTags.tags_names; 
+      delete cardWithTags.tags_ids;
+
+      res.json(cardWithTags);
     });
   },
 
-  updateCard: (req, res) => {
+  updateCard: async (req, res) => {
     const { id } = req.params;
-    const { front, back, difficulty } = req.body;
+    const { front, back, tags } = req.body; 
     const userId = req.user.id;
     
     const checkQuery = `
@@ -95,87 +191,83 @@ const cardsController = {
       WHERE c.id = ? AND d.user_id = ?
     `;
     
-    db.get(checkQuery, [id, userId], (err, card) => {
+    db.get(checkQuery, [id, userId], async (err, card) => {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
       
       if (!card) {
         return res.status(404).json({ error: 'Card não encontrado ou não autorizado.' });
-      }
-      
-      let nextReview = null;
-      const now = new Date();
-      
-      if (difficulty && difficulty !== 'new') {
-        switch (difficulty) {
-          case 'easy':
-            nextReview = new Date(now.getTime() + (4 * 24 * 60 * 60 * 1000)); // 4 dias
-            break;
-          case 'medium':
-            nextReview = new Date(now.getTime() + (2 * 24 * 60 * 60 * 1000)); // 2 dias
-            break;
-          case 'hard':
-            nextReview = new Date(now.getTime() + (1 * 24 * 60 * 60 * 1000)); // 1 dia
-            break;
-        }
       }
       
       const updateQuery = `
         UPDATE cards 
-        SET front = ?, back = ?, difficulty = ?, last_studied = ?, next_review = ?
+        SET front = ?, back = ?
         WHERE id = ?
       `;
       
-      db.run(updateQuery, 
-             [front || card.front, back || card.back, difficulty || card.difficulty, 
-              new Date().toISOString(), nextReview?.toISOString() || card.next_review, id], 
-             function(err) {
-        if (err) {
-          return res.status(500).json({ error: err.message });
-        }
-        
-        res.json({ message: 'Card atualizado com sucesso!' });
+      await new Promise((resolve, reject) => {
+        db.run(updateQuery, 
+               [front || card.front, back || card.back, id], 
+               function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
       });
-    });
-  },
 
-  deleteCard: (req, res) => {
-    const { id } = req.params;
-    const userId = req.user.id;
-    
-    const checkQuery = `
-      SELECT c.* FROM cards c
-      INNER JOIN decks d ON c.deck_id = d.id
-      WHERE c.id = ? AND d.user_id = ?
-    `;
-    
-    db.get(checkQuery, [id, userId], (err, card) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-      
-      if (!card) {
-        return res.status(404).json({ error: 'Card não encontrado ou não autorizado.' });
-      }
-      
-      db.run('DELETE FROM cards WHERE id = ?', [id], function(err) {
-        if (err) {
-          return res.status(500).json({ error: err.message });
+      if (tags !== undefined) { 
+        try {
+          await new Promise((resolve, reject) => {
+            db.run('DELETE FROM card_tags WHERE card_id = ?', [id], (err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+          });
+
+          if (Array.isArray(tags) && tags.length > 0) {
+            const tagPromises = tags.map(tagName => {
+                return new Promise((resolve, reject) => {
+                    db.get('SELECT id FROM tags WHERE user_id = ? AND name = ?', [userId, tagName], (err, tagRow) => {
+                        if (err) return reject(err);
+
+                        if (tagRow) {
+                            db.run('INSERT OR IGNORE INTO card_tags (card_id, tag_id) VALUES (?, ?)', [id, tagRow.id], (err) => {
+                                if (err) reject(err);
+                                else resolve();
+                            });
+                        } else {
+                            db.run('INSERT INTO tags (user_id, name) VALUES (?, ?)', [userId, tagName], function(err) {
+                                if (err) return reject(err);
+                                const newTagId = this.lastID;
+                                db.run('INSERT OR IGNORE INTO card_tags (card_id, tag_id) VALUES (?, ?)', [id, newTagId], (err) => {
+                                    if (err) reject(err);
+                                    else resolve();
+                                });
+                            });
+                        }
+                    });
+                });
+            });
+            await Promise.all(tagPromises);
+          }
+          res.json({ message: 'Card e tags atualizados com sucesso!' });
+        } catch (tagError) {
+          console.error('Erro ao atualizar tags do card:', tagError.message);
+          res.status(500).json({ message: 'Card atualizado, mas houve um erro ao atualizar tags.', error: tagError.message });
         }
-        
-        res.json({ message: 'Card deletado com sucesso!' });
-      });
+      } else {
+        res.json({ message: 'Card atualizado com sucesso!' });
+      }
     });
   },
 
   markCardDifficulty: (req, res) => {
     const { id } = req.params;
-    const { difficulty } = req.body;
+    const { rating } = req.body; 
     const userId = req.user.id;
     
-    if (!['easy', 'medium', 'hard'].includes(difficulty)) {
-      return res.status(400).json({ error: 'Dificuldade deve ser: easy, medium ou hard.' });
+    if (![1, 2, 3, 4, 5].includes(rating)) {
+      return res.status(400).json({ error: 'Rating deve ser um número de 1 a 5.' });
     }
     
     const checkQuery = `
@@ -195,16 +287,28 @@ const cardsController = {
       
       const now = new Date();
       let nextReview;
-      
-      switch (difficulty) {
-        case 'easy':
-          nextReview = new Date(now.getTime() + (4 * 24 * 60 * 60 * 1000)); // 4 dias
+      let newDifficulty; 
+
+      switch (rating) {
+        case 1: 
+          newDifficulty = 'again'; 
+          nextReview = addTime(now, 0, 10); 
           break;
-        case 'medium':
-          nextReview = new Date(now.getTime() + (2 * 24 * 60 * 60 * 1000)); // 2 dias
+        case 2: 
+          newDifficulty = 'hard';
+          nextReview = addTime(now, 1); 
           break;
-        case 'hard':
-          nextReview = new Date(now.getTime() + (1 * 24 * 60 * 60 * 1000)); // 1 dia
+        case 3: 
+          newDifficulty = 'medium';
+          nextReview = addTime(now, 3); 
+          break;
+        case 4: 
+          newDifficulty = 'easy';
+          nextReview = addTime(now, 7); 
+          break;
+        case 5: 
+          newDifficulty = 'easy';
+          nextReview = addTime(now, 14); 
           break;
       }
       
@@ -215,7 +319,7 @@ const cardsController = {
       `;
       
       db.run(updateQuery, 
-             [difficulty, now.toISOString(), nextReview.toISOString(), id], 
+             [newDifficulty, now.toISOString(), nextReview?.toISOString(), id], 
              function(err) {
         if (err) {
           return res.status(500).json({ error: err.message });
@@ -223,7 +327,8 @@ const cardsController = {
         
         res.json({ 
           message: 'Dificuldade marcada com sucesso!',
-          next_review: nextReview.toISOString()
+          new_difficulty: newDifficulty,
+          next_review: nextReview?.toISOString()
         });
       });
     });
